@@ -1,11 +1,19 @@
 {
-    "bucket_info":{
-        "bucket-name-1":["ak", "sk", "endpoint"],
-        "bucket-name-2":["ak", "sk", "endpoint"]
+    "bucket_info": {
+        "bucket-name-1": [
+            "ak",
+            "sk",
+            "endpoint"
+        ],
+        "bucket-name-2": [
+            "ak",
+            "sk",
+            "endpoint"
+        ]
     },
-    "models-dir":"/tmp/models",
-    "layoutreader-model-dir":"/tmp/layoutreader",
-    "device-mode":"cpu",
+    "models-dir": "/home/ubuntu/.cache/modelscope/hub/models/opendatalab/PDF-Extract-Kit-1___0/models",
+    "layoutreader-model-dir": "/home/ubuntu/.cache/modelscope/hub/models/ppaanngggg/layoutreader",
+    "device-mode": "cuda:0",
     "layout-config": {
         "model": "doclayout_yolo"
     },
@@ -22,22 +30,25 @@
     },
     "llm-aided-config": {
         "formula_aided": {
-            "api_key": "your_api_key",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen2.5-7b-instruct",
-            "enable": false
+            "api_key": "5gIdkDHDHtbD97nshH7xw9MW7w8ZkqU9UrVHUujYSDIFgoWexunhJQQJ99ALACHYHv6XJ3w3AAABACOG7jwh",
+            "end_point": "https://misumipoc-east2.openai.azure.com/",
+            "api_version": "2024-05-01-preview",
+            "model": "gpt-4o",
+            "enable": true
         },
         "text_aided": {
-            "api_key": "your_api_key",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen2.5-7b-instruct",
-            "enable": false
+            "api_key": "5gIdkDHDHtbD97nshH7xw9MW7w8ZkqU9UrVHUujYSDIFgoWexunhJQQJ99ALACHYHv6XJ3w3AAABACOG7jwh",
+            "end_point": "https://misumipoc-east2.openai.azure.com/",
+            "api_version": "2024-05-01-preview",
+            "model": "gpt-4o",
+            "enable": true
         },
         "title_aided": {
-            "api_key": "your_api_key",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen2.5-32b-instruct",
-            "enable": false
+            "api_key": "5gIdkDHDHtbD97nshH7xw9MW7w8ZkqU9UrVHUujYSDIFgoWexunhJQQJ99ALACHYHv6XJ3w3AAABACOG7jwh",
+            "end_point": "https://misumipoc-east2.openai.azure.com/",
+            "api_version": "2024-05-01-preview",
+            "model": "gpt-4o",
+            "enable": true
         }
     },
     "config_version": "1.2.0"

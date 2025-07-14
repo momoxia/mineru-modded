@@ -17,7 +17,7 @@ def add_bboxes(blocks, block_type, bboxes):
             BlockType.ImageFootnote,
             BlockType.TableBody,
             BlockType.TableCaption,
-            BlockType.TableFootnote,
+            BlockType.TableFootnote
         ]:
             bboxes.append(
                 [
@@ -116,6 +116,7 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     """经过以上处理后，还存在大框套小框的情况，则删除小框"""
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
+
     """将剩余的bbox做分离处理，防止后面分layout时出错"""
     # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
     all_bboxes.sort(key=lambda x: x[0]+x[1])

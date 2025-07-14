@@ -1,5 +1,5 @@
 import re
-
+import unicodedata
 from loguru import logger
 
 from magic_pdf.config.make_content_config import DropMode, MakeMode
@@ -58,7 +58,7 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
     for para_block in paras_of_layout:
         para_text = ''
         para_type = para_block['type']
-        if para_type in [BlockType.Text, BlockType.List, BlockType.Index]:
+        if para_type in [BlockType.Text, BlockType.List, BlockType.Index, BlockType.Discarded]:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.Title:
             title_level = get_title_level(para_block)
@@ -195,124 +195,393 @@ def merge_para_with_text(para_block):
                 continue
     # 连写字符拆分
     # para_text = __replace_ligatures(para_text)
-
     return para_text
 
+# # Edit by XD
+# # ========= ocr_mkcontent.py =========
+# def para_to_standard_format_v2(
+#     para_block, img_bucket_path, page_idx,
+#     drop_reason=None, label=None, block_index=None
+# ):
+#     t = para_block["type"]
+#
+#     # ---------- 普通文本系 ----------
+#     if t in (
+#         BlockType.Text, BlockType.Title, BlockType.List,
+#         BlockType.Index, BlockType.Discarded,
+#         BlockType.ImageCaption, BlockType.ImageFootnote,
+#         BlockType.TableCaption, BlockType.TableFootnote,
+#     ):
+#         item = {"type": "text", "text": merge_para_with_text(para_block)}
+#         if t == BlockType.Title:
+#             lvl = get_title_level(para_block)
+#             if lvl:
+#                 item["text_level"] = lvl
+#
+#     # ---------- 行间公式 ----------
+#     elif t == BlockType.InterlineEquation:
+#         item = {
+#             "type": "equation",
+#             "text": merge_para_with_text(para_block),
+#             "text_format": "latex",
+#         }
+#
+#     # ---------- Image 复合记录（父块） ----------
+#     elif t == BlockType.Image:
+#         body_path = ""
+#         captions, footnotes = [], []
+#         for sub in para_block["blocks"]:
+#             if sub["type"] == BlockType.ImageBody:
+#                 for ln in sub["lines"]:
+#                     for sp in ln["spans"]:
+#                         if sp["type"] == ContentType.Image and sp.get("image_path"):
+#                             body_path = join_path(img_bucket_path, sp["image_path"])
+#             elif sub["type"] == BlockType.ImageCaption:
+#                 captions.append(merge_para_with_text(sub))
+#             elif sub["type"] == BlockType.ImageFootnote:
+#                 footnotes.append(merge_para_with_text(sub))
+#         item = {
+#             "type": "image",
+#             "img_path": body_path,
+#             "img_caption": captions,
+#             "img_footnote": footnotes,
+#         }
+#
+#     # ---------- Table 复合记录（父块） ----------
+#     elif t == BlockType.Table:
+#         body_html, body_img = "", ""
+#         captions, footnotes = [], []
+#         for sub in para_block["blocks"]:
+#             st = sub["type"]
+#             if st == BlockType.TableBody:
+#                 for ln in sub["lines"]:
+#                     for sp in ln["spans"]:
+#                         if sp["type"] != ContentType.Table:
+#                             continue
+#                         if sp.get("latex"):
+#                             body_html = f"\n\n$\n{sp['latex']}\n$\n\n"
+#                         elif sp.get("html"):
+#                             body_html = f"\n\n{sp['html']}\n\n"
+#                         if sp.get("image_path"):
+#                             body_img = join_path(img_bucket_path, sp["image_path"])
+#             elif st == BlockType.TableCaption:
+#                 captions.append(merge_para_with_text(sub))
+#             elif st == BlockType.TableFootnote:
+#                 footnotes.append(merge_para_with_text(sub))
+#         item = {
+#             "type": "table",
+#             "table_body": body_html,
+#             "table_caption": captions,
+#             "table_footnote": footnotes,
+#             "img_path": body_img,
+#         }
+#
+#     # ---------- 兜底 ----------
+#     else:
+#         item = {"type": "text", "text": merge_para_with_text(para_block)}
+#
+#     # 公共字段
+#     item["page_idx"] = page_idx
+#     if drop_reason:
+#         item["drop_reason"] = drop_reason
+#     if label:
+#         item["label"] = label
+#     if block_index:
+#         item["id"] = block_index
+#     return item
 
-def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason=None):
-    para_type = para_block['type']
-    para_content = {}
-    if para_type in [BlockType.Text, BlockType.List, BlockType.Index]:
-        para_content = {
-            'type': 'text',
-            'text': merge_para_with_text(para_block),
-        }
-    elif para_type == BlockType.Title:
-        para_content = {
-            'type': 'text',
-            'text': merge_para_with_text(para_block),
-        }
-        title_level = get_title_level(para_block)
-        if title_level != 0:
-            para_content['text_level'] = title_level
-    elif para_type == BlockType.InterlineEquation:
-        para_content = {
-            'type': 'equation',
-            'text': merge_para_with_text(para_block),
-            'text_format': 'latex',
-        }
-    elif para_type == BlockType.Image:
-        para_content = {'type': 'image', 'img_path': '', 'img_caption': [], 'img_footnote': []}
-        for block in para_block['blocks']:
-            if block['type'] == BlockType.ImageBody:
-                for line in block['lines']:
-                    for span in line['spans']:
-                        if span['type'] == ContentType.Image:
-                            if span.get('image_path', ''):
-                                para_content['img_path'] = join_path(img_buket_path, span['image_path'])
-            if block['type'] == BlockType.ImageCaption:
-                para_content['img_caption'].append(merge_para_with_text(block))
-            if block['type'] == BlockType.ImageFootnote:
-                para_content['img_footnote'].append(merge_para_with_text(block))
-    elif para_type == BlockType.Table:
-        para_content = {'type': 'table', 'img_path': '', 'table_caption': [], 'table_footnote': []}
-        for block in para_block['blocks']:
-            if block['type'] == BlockType.TableBody:
-                for line in block['lines']:
-                    for span in line['spans']:
-                        if span['type'] == ContentType.Table:
-
-                            if span.get('latex', ''):
-                                para_content['table_body'] = f"\n\n$\n {span['latex']}\n$\n\n"
-                            elif span.get('html', ''):
-                                para_content['table_body'] = f"\n\n{span['html']}\n\n"
-
-                            if span.get('image_path', ''):
-                                para_content['img_path'] = join_path(img_buket_path, span['image_path'])
-
-            if block['type'] == BlockType.TableCaption:
-                para_content['table_caption'].append(merge_para_with_text(block))
-            if block['type'] == BlockType.TableFootnote:
-                para_content['table_footnote'].append(merge_para_with_text(block))
-
-    para_content['page_idx'] = page_idx
-
-    if drop_reason is not None:
-        para_content['drop_reason'] = drop_reason
-
-    return para_content
 
 
-def union_make(pdf_info_dict: list,
-               make_mode: str,
-               drop_mode: str,
-               img_buket_path: str = '',
-               ):
-    output_content = []
-    for page_info in pdf_info_dict:
-        drop_reason_flag = False
-        drop_reason = None
-        if page_info.get('need_drop', False):
-            drop_reason = page_info.get('drop_reason')
-            if drop_mode == DropMode.NONE:
-                pass
-            elif drop_mode == DropMode.NONE_WITH_REASON:
-                drop_reason_flag = True
-            elif drop_mode == DropMode.WHOLE_PDF:
-                raise Exception((f'drop_mode is {DropMode.WHOLE_PDF} ,'
-                                 f'drop_reason is {drop_reason}'))
-            elif drop_mode == DropMode.SINGLE_PAGE:
-                logger.warning((f'drop_mode is {DropMode.SINGLE_PAGE} ,'
-                                f'drop_reason is {drop_reason}'))
-                continue
-            else:
-                raise Exception('drop_mode can not be null')
+# ========= ocr_mkcontent.py =========
+# ========= ocr_mkcontent.py =========
+# ★ 公用小工具 -----------------------------------------------------------------
+_BLANK_FLAGS = {"", "空表格", "空图片", "空文本", "空行", " "}      # 末尾那个是 nbsp
 
-        paras_of_layout = page_info.get('para_blocks')
-        page_idx = page_info.get('page_idx')
-        if not paras_of_layout:
+# def _clean_text(txt: str) -> str:
+#     """去掉前后空白与换行"""
+#     return txt.replace("\u3000", " ").strip()     # 全角空格 → 普通空格
+_WS_CHARS = dict.fromkeys(c for c in map(chr, range(0x110000))
+                          if unicodedata.category(c) in ('Zs', 'Zl', 'Zp'))
+
+def _clean_text(txt: str) -> str:
+    # ① Unicode 归一化（半→全，兼去掉 compatibility 字符）
+    txt = unicodedata.normalize('NFKC', txt)
+    # ② 把所有“空白类”字符（Zs/Zl/Zp）统统变成普通空格
+    txt = txt.translate(_WS_CHARS).replace('\u3000', ' ').replace('\u00A0', ' ')
+    # ③ 合并多空格
+    txt = re.sub(r'\s+', ' ', txt)
+    return txt.strip()
+
+def _has_meaningful_text(block) -> bool:
+    """
+    False  ⇒ 该块应被视为“无意义”而被过滤掉
+    """
+    # ① 先做统一的空白/全角空白清洗
+    txt = _clean_text(merge_para_with_text(block))     # ← 这里换成 _clean_text
+    if not txt:
+        return False
+
+    # ② 明确定义的无效占位词
+    if txt in _BLANK_FLAGS:            # {"", "空表格", "空图片", ...}
+        return False
+
+    # ③ 只有标点 / 空白
+    if all(ch.isspace() or unicodedata.category(ch).startswith('P')
+           for ch in txt):
+        return False
+
+    return True
+
+def _table_has_body(tbl) -> bool:
+    """TableBody 是否包含 html/latex 或截图"""
+    for sub in tbl["blocks"]:
+        if sub["type"] != BlockType.TableBody:
             continue
-        if make_mode == MakeMode.MM_MD:
-            page_markdown = ocr_mk_markdown_with_para_core_v2(
-                paras_of_layout, 'mm', img_buket_path)
-            output_content.extend(page_markdown)
-        elif make_mode == MakeMode.NLP_MD:
-            page_markdown = ocr_mk_markdown_with_para_core_v2(
-                paras_of_layout, 'nlp')
-            output_content.extend(page_markdown)
-        elif make_mode == MakeMode.STANDARD_FORMAT:
-            for para_block in paras_of_layout:
-                if drop_reason_flag:
-                    para_content = para_to_standard_format_v2(
-                        para_block, img_buket_path, page_idx)
-                else:
-                    para_content = para_to_standard_format_v2(
-                        para_block, img_buket_path, page_idx)
-                output_content.append(para_content)
-    if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-        return '\n\n'.join(output_content)
-    elif make_mode == MakeMode.STANDARD_FORMAT:
-        return output_content
+        for ln in sub["lines"]:
+            for sp in ln["spans"]:
+                if sp["type"] != ContentType.Table:
+                    continue
+                if sp.get("html") or sp.get("latex") or sp.get("image_path"):
+                    return True
+    return False
+
+
+
+# ★ para_to_standard_format_v2 (保持主体不变，仅在 caption/footnote 处过滤空串) -----
+def para_to_standard_format_v2(
+    para_block, img_bucket_path, page_idx,
+    drop_reason=None, label=None, block_index=None
+):
+    t = para_block["type"]
+
+    # ---------- 普通文本系 ------------------------------------------------------
+    if t in (
+        BlockType.Text, BlockType.Title, BlockType.List,
+        BlockType.Index, BlockType.Discarded,
+        BlockType.ImageCaption, BlockType.ImageFootnote,
+        BlockType.TableCaption, BlockType.TableFootnote,
+    ):
+        item = {"type": "text", "text": merge_para_with_text(para_block)}
+        if t == BlockType.Title:
+            lvl = get_title_level(para_block)
+            if lvl:
+                item["text_level"] = lvl
+
+    # ---------- 行间公式 --------------------------------------------------------
+    elif t == BlockType.InterlineEquation:
+        item = {
+            "type": "equation",
+            "text": merge_para_with_text(para_block),
+            "text_format": "latex",
+        }
+
+    # ---------- Image 复合记录 ---------------------------------------------------
+    elif t == BlockType.Image:
+        body_path, captions, footnotes = "", [], []
+        for sub in para_block["blocks"]:
+            st = sub["type"]
+            if st == BlockType.ImageBody:
+                for ln in sub["lines"]:
+                    for sp in ln["spans"]:
+                        if sp["type"] == ContentType.Image and sp.get("image_path"):
+                            body_path = join_path(img_bucket_path, sp["image_path"])
+            elif st == BlockType.ImageCaption and _has_meaningful_text(sub):
+                captions.append(_clean_text(merge_para_with_text(sub)))
+            elif st == BlockType.ImageFootnote and _has_meaningful_text(sub):
+                footnotes.append(_clean_text(merge_para_with_text(sub)))
+        item = {
+            "type": "image",
+            "img_path": body_path,
+            "img_caption": captions,
+            "img_footnote": footnotes,
+        }
+
+    # ---------- Table 复合记录 ---------------------------------------------------
+    elif t == BlockType.Table:
+        body_html, body_img, captions, footnotes = "", "", [], []
+        for sub in para_block["blocks"]:
+            st = sub["type"]
+            if st == BlockType.TableBody:
+                for ln in sub["lines"]:
+                    for sp in ln["spans"]:
+                        if sp["type"] != ContentType.Table:
+                            continue
+                        if sp.get("latex"):
+                            body_html = f"\n\n$\n{sp['latex']}\n$\n\n"
+                        elif sp.get("html"):
+                            body_html = f"\n\n{sp['html']}\n\n"
+                        if sp.get("image_path"):
+                            body_img = join_path(img_bucket_path, sp["image_path"])
+            elif st == BlockType.TableCaption and _has_meaningful_text(sub):
+                captions.append(_clean_text(merge_para_with_text(sub)))
+            elif st == BlockType.TableFootnote and _has_meaningful_text(sub):
+                footnotes.append(_clean_text(merge_para_with_text(sub)))
+        item = {
+            "type": "table",
+            "table_body": body_html,
+            "table_caption": captions,
+            "table_footnote": footnotes,
+            "img_path": body_img,
+        }
+
+    # ---------- 兜底 ------------------------------------------------------------
+    else:
+        item = {"type": "text", "text": merge_para_with_text(para_block)}
+
+    # 公共字段 -------------------------------------------------------------------
+    item["page_idx"] = page_idx
+    if drop_reason:
+        item["drop_reason"] = drop_reason
+    if label:
+        item["label"] = label
+    if block_index:
+        item["id"] = label          # ⭐ id 与 label 完全一致
+    return item
+
+
+# ★ union_make -----------------------------------------------------------------
+def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
+    out_items, md_parts = [], []
+
+    for pg in pdf_info_list:
+
+        # ---- 整页丢弃策略 ----
+        if pg.get("need_drop") and drop_mode == DropMode.SINGLE_PAGE:
+            continue
+        if pg.get("need_drop") and drop_mode == DropMode.WHOLE_PDF:
+            raise RuntimeError(pg["drop_reason"])
+
+        page_idx    = pg["page_idx"]
+        drop_reason = pg.get("drop_reason")
+        seq, dseq   = 1, 1
+
+        # -------- ① discarded ----------
+        for d in pg.get("discarded_blocks", []):
+            if not _has_meaningful_text(d):  # ★ 新增
+                continue
+            lab = f"D{dseq}"; dseq += 1
+            out_items.append(
+                para_to_standard_format_v2(d, img_bucket_path, page_idx,
+                                           drop_reason, lab, lab)
+            )
+
+        # -------- ② 正文 ----------
+        table_sort = {
+            BlockType.TableCaption : 1,
+            BlockType.TableBody    : 2,
+            BlockType.TableFootnote: 3,
+        }
+        img_sort = {
+            BlockType.ImageBody    : 1,
+            BlockType.ImageCaption : 2,
+            BlockType.ImageFootnote: 3,
+        }
+
+        for blk in pg["para_blocks"]:
+            t = blk["type"]
+
+            # ---- 普通文字 / 标题 / 列表 / 公式 ----
+            if t in (BlockType.Text, BlockType.Title, BlockType.InterlineEquation,
+                     BlockType.List, BlockType.Index):
+                if not _has_meaningful_text(blk):
+                    continue
+                lab = str(seq); seq += 1
+                out_items.append(
+                    para_to_standard_format_v2(blk, img_bucket_path, page_idx,
+                                               drop_reason, lab, lab)
+                )
+                continue
+            # ---- Image 复合 ----
+            if t == BlockType.Image:
+                # ① caption 先输出
+                for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
+                    if sub["type"] == BlockType.ImageCaption and _has_meaningful_text(sub):
+                        lab = str(seq);
+                        seq += 1
+                        out_items.append(
+                            para_to_standard_format_v2(
+                                sub, img_bucket_path, page_idx,
+                                drop_reason, lab, lab
+                            )
+                        )
+
+                # ② body 复合记录
+                lab = str(seq);
+                seq += 1
+                out_items.append(
+                    para_to_standard_format_v2(
+                        blk, img_bucket_path, page_idx,
+                        drop_reason, lab, lab
+                    )
+                )
+
+                # ③ footnote 最后
+                for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
+                    if sub["type"] == BlockType.ImageFootnote and _has_meaningful_text(sub):
+                        lab = str(seq);
+                        seq += 1
+                        out_items.append(
+                            para_to_standard_format_v2(
+                                sub, img_bucket_path, page_idx,
+                                drop_reason, lab, lab
+                            )
+                        )
+                continue
+
+            # ---- Table 复合 ----
+            if t == BlockType.Table:
+                parts = sorted(blk["blocks"], key=lambda b: table_sort[b["type"]])
+
+                # ① caption
+                for sub in parts:
+                    if sub["type"] == BlockType.TableCaption and _has_meaningful_text(sub):
+                        lab = str(seq);
+                        seq += 1
+                        out_items.append(
+                            para_to_standard_format_v2(sub, img_bucket_path, page_idx,
+                                                       drop_reason, lab, lab)
+                        )
+
+                # ② body 复合 —— 仅当真的有内容
+                if _table_has_body(blk):
+                    lab = str(seq);
+                    seq += 1
+                    out_items.append(
+                        para_to_standard_format_v2(blk, img_bucket_path, page_idx,
+                                                   drop_reason, lab, lab)
+                    )
+
+                # ③ footnote
+                for sub in parts:
+                    if sub["type"] == BlockType.TableFootnote and _has_meaningful_text(sub):
+                        lab = str(seq);
+                        seq += 1
+                        out_items.append(
+                            para_to_standard_format_v2(sub, img_bucket_path, page_idx,
+                                                       drop_reason, lab, lab)
+                        )
+                continue
+
+            # ---- 兜底 ----
+            lab = str(seq); seq += 1
+            out_items.append(
+                para_to_standard_format_v2(blk, img_bucket_path, page_idx,
+                                           drop_reason, lab, lab)
+            )
+
+    # -------- ③ 输出 --------
+    if make_mode == MakeMode.STANDARD_FORMAT:
+        return out_items
+
+    for it in out_items:
+        if it["type"] in ("text", "equation"):
+            md_parts.append(it["text"])
+        elif it["type"] == "image":
+            md_parts.append(f"![]({it['img_path']})")
+        elif it["type"] == "table":
+            md_parts.append(it["table_body"])
+    return "\n\n".join(md_parts)
+
 
 
 def get_title_level(block):

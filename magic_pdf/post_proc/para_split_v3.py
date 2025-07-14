@@ -351,11 +351,12 @@ def __para_merge_page(blocks):
                     prev_block = text_blocks_group[i - 1]
 
                     if (
-                        current_block['type'] == 'text'
-                        and prev_block['type'] == 'text'
+                        current_block['type'] == BlockType.Text
+                        and prev_block['type'] == BlockType.Text
                         and not is_list_group
                     ):
                         __merge_2_text_blocks(current_block, prev_block)
+                        # continue
                     elif (
                         current_block['type'] == BlockType.List
                         and prev_block['type'] == BlockType.List

@@ -2,7 +2,7 @@
 import json
 from loguru import logger
 from magic_pdf.dict2md.ocr_mkcontent import merge_para_with_text
-from openai import OpenAI
+from openai import AzureOpenAI
 import ast
 
 
@@ -71,9 +71,10 @@ def llm_aided_text(pdf_info_dict, text_aided_config):
     pass
 
 def llm_aided_title(pdf_info_dict, title_aided_config):
-    client = OpenAI(
+    client = AzureOpenAI(
+        azure_endpoint=title_aided_config["end_point"],
         api_key=title_aided_config["api_key"],
-        base_url=title_aided_config["base_url"],
+        api_version=title_aided_config["api_version"],
     )
     title_dict = {}
     origin_title_list = []
@@ -143,7 +144,7 @@ Corrected title list:
                 model=title_aided_config["model"],
                 messages=[
                     {'role': 'user', 'content': title_optimize_prompt}],
-                temperature=0.7,
+                temperature=1e-4
             )
             # logger.info(f"Title completion: {completion.choices[0].message.content}")
             dict_completion = ast.literal_eval(completion.choices[0].message.content)

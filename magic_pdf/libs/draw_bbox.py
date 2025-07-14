@@ -35,7 +35,7 @@ def draw_bbox_without_number(i, bbox_list, page, rgb_config, fill_config):
             )  # Draw the rectangle
 
 
-def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config, draw_bbox=True):
+def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config, draw_bbox=True, label=''):
     new_rgb = []
     for item in rgb_config:
         item = float(item) / 255
@@ -64,7 +64,7 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config, draw_bbox
                     overlay=True,
                 )  # Draw the rectangle
         page.insert_text(
-            (x1 + 2, y0 + 10), str(j + 1), fontsize=10, color=new_rgb
+            (x1 + 2, y0 + 10), f"{label}{j + 1}", fontsize=10, color=new_rgb
         )  # Insert the index in the top left corner of the rectangle
 
 
@@ -175,7 +175,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
 
     for i, page in enumerate(pdf_docs):
 
-        draw_bbox_without_number(i, dropped_bbox_list, page, [158, 158, 158], True)
+        draw_bbox_with_number(i, dropped_bbox_list, page, [158, 158, 158], True, label='D')
         # draw_bbox_without_number(i, tables_list, page, [153, 153, 0], True)  # color !
         draw_bbox_without_number(i, tables_body_list, page, [204, 204, 0], True)
         draw_bbox_without_number(i, tables_caption_list, page, [255, 255, 102], True)
@@ -191,7 +191,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, indexs_list, page, [40, 169, 92], True)
 
         draw_bbox_with_number(
-            i, layout_bbox_list, page, [255, 0, 0], False, draw_bbox=False
+            i, layout_bbox_list, page, [255, 0, 0], False, draw_bbox=False, label=''
         )
 
     # Save the PDF
