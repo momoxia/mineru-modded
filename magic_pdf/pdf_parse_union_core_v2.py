@@ -879,17 +879,7 @@ def parse_page_core(
 
     """block内重排(img和table的block内多个caption或footnote的排序)"""
     for block in sorted_blocks:
-        if block['type'] == BlockType.Table:
-            _tbl_order = {
-                BlockType.TableCaption: 1,
-                BlockType.TableBody: 2,
-                BlockType.TableFootnote: 3,
-            }
-            block['blocks'] = sorted(
-                block['blocks'],
-                key=lambda b: (_tbl_order.get(b['type'], 99), b['index'])
-            )
-        elif block['type'] == BlockType.Image:
+        if block['type'] in [BlockType.Image, BlockType.Table]:
             block['blocks'] = sorted(block['blocks'], key=lambda b: b['index'])
 
     """获取QA需要外置的list"""

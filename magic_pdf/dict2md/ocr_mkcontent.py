@@ -385,9 +385,9 @@ def para_to_standard_format_v2(
                     for sp in ln["spans"]:
                         if sp["type"] == ContentType.Image and sp.get("image_path"):
                             body_path = join_path(img_bucket_path, sp["image_path"])
-            elif st == BlockType.ImageCaption and _has_meaningful_text(sub):
+            elif st == BlockType.ImageCaption:
                 captions.append(_clean_text(merge_para_with_text(sub)))
-            elif st == BlockType.ImageFootnote and _has_meaningful_text(sub):
+            elif st == BlockType.ImageFootnote:
                 footnotes.append(_clean_text(merge_para_with_text(sub)))
         item = {
             "type": "image",
@@ -412,9 +412,9 @@ def para_to_standard_format_v2(
                             body_html = f"\n\n{sp['html']}\n\n"
                         if sp.get("image_path"):
                             body_img = join_path(img_bucket_path, sp["image_path"])
-            elif st == BlockType.TableCaption and _has_meaningful_text(sub):
+            elif st == BlockType.TableCaption:
                 captions.append(_clean_text(merge_para_with_text(sub)))
-            elif st == BlockType.TableFootnote and _has_meaningful_text(sub):
+            elif st == BlockType.TableFootnote:
                 footnotes.append(_clean_text(merge_para_with_text(sub)))
         item = {
             "type": "table",
@@ -495,8 +495,8 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
             if t == BlockType.Image:
                 # ① caption 先输出
                 for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
-                    if sub["type"] == BlockType.ImageCaption and _has_meaningful_text(sub):
-                        lab = str(seq);
+                    if sub["type"] == BlockType.ImageCaption:
+                        lab = str(seq)
                         seq += 1
                         out_items.append(
                             para_to_standard_format_v2(
@@ -506,7 +506,7 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
                         )
 
                 # ② body 复合记录
-                lab = str(seq);
+                lab = str(seq)
                 seq += 1
                 out_items.append(
                     para_to_standard_format_v2(
@@ -517,8 +517,8 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
 
                 # ③ footnote 最后
                 for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
-                    if sub["type"] == BlockType.ImageFootnote and _has_meaningful_text(sub):
-                        lab = str(seq);
+                    if sub["type"] == BlockType.ImageFootnote:
+                        lab = str(seq)
                         seq += 1
                         out_items.append(
                             para_to_standard_format_v2(
@@ -534,7 +534,7 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
 
                 # ① caption
                 for sub in parts:
-                    if sub["type"] == BlockType.TableCaption and _has_meaningful_text(sub):
+                    if sub["type"] == BlockType.TableCaption:
                         lab = str(seq);
                         seq += 1
                         out_items.append(
@@ -553,7 +553,7 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
 
                 # ③ footnote
                 for sub in parts:
-                    if sub["type"] == BlockType.TableFootnote and _has_meaningful_text(sub):
+                    if sub["type"] == BlockType.TableFootnote:
                         lab = str(seq);
                         seq += 1
                         out_items.append(
@@ -575,11 +575,15 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
 
     for it in out_items:
         if it["type"] in ("text", "equation"):
-            md_parts.append(it["text"])
+            if "text_level" in it:
+                prefix = "#" * int(it["text_level"])
+                md_parts.append(f"{prefix} {it['text']}")
+            else:
+                md_parts.append(it["text"])
         elif it["type"] == "image":
             md_parts.append(f"![]({it['img_path']})")
         elif it["type"] == "table":
-            md_parts.append(it["table_body"])
+            md_parts.append(f"![]({it['img_path']})")
     return "\n\n".join(md_parts)
 
 

@@ -152,7 +152,7 @@ Corrected title list:
 
             if len(dict_completion) == len(title_dict):
                 for i, origin_title_block in enumerate(origin_title_list):
-                    origin_title_block["level"] = int(dict_completion[i])
+                    origin_title_block["level"] = int(dict_completion[f'{i}'])
                 break
             else:
                 logger.warning("The number of titles in the optimized result is not equal to the number of titles in the input.")
