@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from loguru import logger
+import itertools
 
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
@@ -435,15 +436,52 @@ def para_to_standard_format_v2(
     if label:
         item["label"] = label
     if block_index:
-        item["id"] = label          # ⭐ id 与 label 完全一致
+        item["id"] = block_index
     return item
 
 
-# ★ union_make -----------------------------------------------------------------
+def _ensure_labels_for_page(pg):
+    """Assign labels to para_blocks based on the same order as draw_layout_bbox."""
+    # 1⃣ 先按原有逻辑给 discarded_blocks 打 D# 号
+    dseq = itertools.count(1)
+    for d in pg.get("discarded_blocks", []):
+        if "label" not in d:
+            d["label"] = f"D{next(dseq)}"
+
+    # 2⃣ 构造 layout 顺序的 bbox 列表（和 draw_layout_bbox 一致）
+    table_type_order = {
+        'table_caption': 1,
+        'table_body': 2,
+        'table_footnote': 3
+    }
+    layout_seq = []
+    for blk in pg.get("para_blocks", []):
+        t = blk["type"]
+        if t in (BlockType.Text, BlockType.Title,
+                 BlockType.InterlineEquation, BlockType.List,
+                 BlockType.Index):
+            layout_seq.append((blk, blk["bbox"]))
+        elif t == BlockType.Image:
+            layout_seq.append((blk, blk["bbox"]))
+        elif t == BlockType.Table:
+            for sub in sorted(blk["blocks"], key=lambda b: table_type_order[b["type"]]):
+                layout_seq.append((sub, sub["bbox"]))
+
+    # 3⃣ 为每个 (block, bbox) 依次赋序号
+    for idx, (blk, _) in enumerate(layout_seq, start=1):
+        blk["label"] = str(idx)
+
+    # 4⃣ 最后，把没被列到 layout_seq 里的块都视为无用，丢弃它们
+    pg["para_blocks"] = [blk for blk in pg["para_blocks"]
+                         if "label" in blk or blk["type"] == BlockType.Table]
+
+
 def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
     out_items, md_parts = [], []
 
     for pg in pdf_info_list:
+        # --- ensure the page has labels before we start consuming it
+        _ensure_labels_for_page(pg)
 
         # ---- 整页丢弃策略 ----
         if pg.get("need_drop") and drop_mode == DropMode.SINGLE_PAGE:
@@ -453,7 +491,8 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
 
         page_idx    = pg["page_idx"]
         drop_reason = pg.get("drop_reason")
-        seq, dseq   = 1, 1
+        seq_gen = itertools.count(1)   # global reading‑order fallback
+        dseq    = 1                    # discarded‑block counter
 
         # -------- ① discarded ----------
         for d in pg.get("discarded_blocks", []):
@@ -471,11 +510,7 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
             BlockType.TableBody    : 2,
             BlockType.TableFootnote: 3,
         }
-        img_sort = {
-            BlockType.ImageBody    : 1,
-            BlockType.ImageCaption : 2,
-            BlockType.ImageFootnote: 3,
-        }
+
 
         for blk in pg["para_blocks"]:
             t = blk["type"]
@@ -483,50 +518,24 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
             # ---- 普通文字 / 标题 / 列表 / 公式 ----
             if t in (BlockType.Text, BlockType.Title, BlockType.InterlineEquation,
                      BlockType.List, BlockType.Index):
-                if not _has_meaningful_text(blk):
-                    continue
-                lab = str(seq); seq += 1
+                content_id = next(seq_gen)
+                lab = str(blk.get("label", None))
                 out_items.append(
                     para_to_standard_format_v2(blk, img_bucket_path, page_idx,
-                                               drop_reason, lab, lab)
+                                               drop_reason, lab, content_id)
                 )
                 continue
+
             # ---- Image 复合 ----
             if t == BlockType.Image:
-                # ① caption 先输出
-                for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
-                    if sub["type"] == BlockType.ImageCaption:
-                        lab = str(seq)
-                        seq += 1
-                        out_items.append(
-                            para_to_standard_format_v2(
-                                sub, img_bucket_path, page_idx,
-                                drop_reason, lab, lab
-                            )
-                        )
-
-                # ② body 复合记录
-                lab = str(seq)
-                seq += 1
+                content_id = next(seq_gen)
+                lab = str(blk.get("label", None))
                 out_items.append(
                     para_to_standard_format_v2(
                         blk, img_bucket_path, page_idx,
-                        drop_reason, lab, lab
+                        drop_reason, lab, content_id
                     )
                 )
-
-                # ③ footnote 最后
-                for sub in sorted(blk["blocks"], key=lambda b: img_sort[b["type"]]):
-                    if sub["type"] == BlockType.ImageFootnote:
-                        lab = str(seq)
-                        seq += 1
-                        out_items.append(
-                            para_to_standard_format_v2(
-                                sub, img_bucket_path, page_idx,
-                                drop_reason, lab, lab
-                            )
-                        )
-                continue
 
             # ---- Table 复合 ----
             if t == BlockType.Table:
@@ -535,39 +544,36 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
                 # ① caption
                 for sub in parts:
                     if sub["type"] == BlockType.TableCaption:
-                        lab = str(seq);
-                        seq += 1
+                        content_id = next(seq_gen)
+                        lab = str(sub.get("label", None))
                         out_items.append(
                             para_to_standard_format_v2(sub, img_bucket_path, page_idx,
-                                                       drop_reason, lab, lab)
+                                                       drop_reason, lab, content_id)
                         )
 
                 # ② body 复合 —— 仅当真的有内容
                 if _table_has_body(blk):
-                    lab = str(seq);
-                    seq += 1
-                    out_items.append(
-                        para_to_standard_format_v2(blk, img_bucket_path, page_idx,
-                                                   drop_reason, lab, lab)
-                    )
+                    content_id = next(seq_gen)
+                    for sub in blk["blocks"]:
+                        if sub["type"] == BlockType.TableBody:
+                            lab = str(sub.get("label", None))
+                            out_items.append(
+                                para_to_standard_format_v2(blk, img_bucket_path, page_idx,
+                                                           drop_reason, lab, content_id)
+                            )
 
                 # ③ footnote
                 for sub in parts:
                     if sub["type"] == BlockType.TableFootnote:
-                        lab = str(seq);
-                        seq += 1
+                        content_id = next(seq_gen)
+                        lab = str(sub.get("label", None))
                         out_items.append(
                             para_to_standard_format_v2(sub, img_bucket_path, page_idx,
-                                                       drop_reason, lab, lab)
+                                                       drop_reason, lab, content_id)
                         )
                 continue
 
-            # ---- 兜底 ----
-            lab = str(seq); seq += 1
-            out_items.append(
-                para_to_standard_format_v2(blk, img_bucket_path, page_idx,
-                                           drop_reason, lab, lab)
-            )
+
 
     # -------- ③ 输出 --------
     if make_mode == MakeMode.STANDARD_FORMAT:
@@ -585,7 +591,6 @@ def union_make(pdf_info_list, make_mode, drop_mode, img_bucket_path=""):
         elif it["type"] == "table":
             md_parts.append(f"![]({it['img_path']})")
     return "\n\n".join(md_parts)
-
 
 
 def get_title_level(block):
