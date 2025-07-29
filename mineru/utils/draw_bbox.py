@@ -27,7 +27,7 @@ def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     return c
 
 
-def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_bbox=True):
+def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_bbox=True, label=''):
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
     # 强制转换为 float
@@ -49,7 +49,7 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
         c.setFillColorRGB(*new_rgb, 1.0)
         c.setFontSize(size=10)
         # 这里也要用float
-        c.drawString(x1 + 2, page_height - y0 - 10, str(j + 1))
+        c.drawString(x1 + 2, page_height - y0 - 10, f"{label}{j + 1}")
 
     return c
 
@@ -66,6 +66,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     lists_list = []
     indexs_list = []
     for page in pdf_info:
+
         page_dropped_list = []
         tables, tables_body, tables_caption, tables_footnote = [], [], [], []
         imgs, imgs_body, imgs_caption, imgs_footnote = [], [], [], []
@@ -165,7 +166,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         # 使用原始PDF的尺寸创建canvas
         c = canvas.Canvas(packet, pagesize=custom_page_size)
 
-        c = draw_bbox_without_number(i, dropped_bbox_list, page, c, [158, 158, 158], True)
+        c = draw_bbox_with_number(i, dropped_bbox_list, page, c, [158, 158, 158], True, label='D')
         c = draw_bbox_without_number(i, tables_body_list, page, c, [204, 204, 0], True)
         c = draw_bbox_without_number(i, tables_caption_list, page, c, [255, 255, 102], True)
         c = draw_bbox_without_number(i, tables_footnote_list, page, c, [229, 255, 204], True)
@@ -177,7 +178,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         c = draw_bbox_without_number(i, interequations_list, page, c, [0, 255, 0], True)
         c = draw_bbox_without_number(i, lists_list, page, c, [40, 169, 92], True)
         c = draw_bbox_without_number(i, indexs_list, page, c, [40, 169, 92], True)
-        c = draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False, draw_bbox=False)
+        c = draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False, draw_bbox=False, label='')
 
         c.save()
         packet.seek(0)

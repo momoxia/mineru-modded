@@ -18,8 +18,16 @@ def read_config():
     if os.path.isabs(CONFIG_FILE_NAME):
         config_file = CONFIG_FILE_NAME
     else:
-        home_dir = os.path.expanduser('~')
-        config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
+        # Look for config in project root two levels up
+        project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
+        )
+        candidate = os.path.join(project_root, CONFIG_FILE_NAME)
+        if os.path.exists(candidate):
+            config_file = candidate
+        else:
+            home_dir = os.path.expanduser('~')
+            config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
 
     if not os.path.exists(config_file):
         # logger.warning(f'{config_file} not found, using default configuration')

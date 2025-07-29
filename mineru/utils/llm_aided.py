@@ -1,15 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from loguru import logger
-from openai import OpenAI
+from openai import AzureOpenAI
 import json_repair
 
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 
 
 def llm_aided_title(page_info_list, title_aided_config):
-    client = OpenAI(
+    client = AzureOpenAI(
+        azure_endpoint=title_aided_config["end_point"],
         api_key=title_aided_config["api_key"],
-        base_url=title_aided_config["base_url"],
+        api_version=title_aided_config["api_version"],
     )
     title_dict = {}
     origin_title_list = []
@@ -89,7 +90,7 @@ Corrected title list:
                 model=title_aided_config["model"],
                 messages=[
                     {'role': 'user', 'content': title_optimize_prompt}],
-                temperature=0.7,
+                temperature=1e-4,
                 stream=True,
             )
             content_pieces = []
@@ -97,10 +98,7 @@ Corrected title list:
                 if chunk.choices and chunk.choices[0].delta.content is not None:
                     content_pieces.append(chunk.choices[0].delta.content)
             content = "".join(content_pieces).strip()
-            # logger.info(f"Title completion: {content}")
-            if "</think>" in content:
-                idx = content.index("</think>") + len("</think>")
-                content = content[idx:].strip()
+
             dict_completion = json_repair.loads(content)
             dict_completion = {int(k): int(v) for k, v in dict_completion.items()}
 
