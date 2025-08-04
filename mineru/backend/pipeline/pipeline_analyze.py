@@ -76,8 +76,10 @@ def doc_analyze(
     """
     适当调大MIN_BATCH_INFERENCE_SIZE可以提高性能，更大的 MIN_BATCH_INFERENCE_SIZE会消耗更多内存，
     可通过环境变量MINERU_MIN_BATCH_INFERENCE_SIZE设置，默认值为384。
+
     """
     min_batch_inference_size = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 384))
+
 
     # 收集所有页面信息
     all_pages_info = []  # 存储(dataset_index, page_index, img, ocr, lang, width, height)
@@ -85,6 +87,7 @@ def doc_analyze(
     all_image_lists = []
     all_pdf_docs = []
     ocr_enabled_list = []
+
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
         _ocr_enable = False
@@ -96,7 +99,7 @@ def doc_analyze(
 
         ocr_enabled_list.append(_ocr_enable)
         _lang = lang_list[pdf_idx]
-
+        
         # 收集每个数据集中的页面
         images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
         all_image_lists.append(images_list)
@@ -109,7 +112,7 @@ def doc_analyze(
             ))
 
     # 准备批处理
-    images_with_extra_info = [(info[2], info[3], info[4]) for info in all_pages_info]
+    images_with_extra_info = [(info[2], info[3], info[4], info[1]) for info in all_pages_info]
     batch_size = min_batch_inference_size
     batch_images = [
         images_with_extra_info[i:i + batch_size]
