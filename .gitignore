@@ -48,6 +48,8 @@ debug_utils/
 
 # sphinx docs
 _build/
+build/
 
+mineru.json
 
-output/build/
+output/mineru.json
