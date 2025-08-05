@@ -138,6 +138,30 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     default='huggingface',
 )
 
+# 设置是否保存PDF演示/**非原生库**/
+# ---------------------------------------
+@click.option(
+    '--layout',
+    'f_draw_layout_bbox',
+    type=bool,
+    default=True
+)
+
+@click.option(
+    '--span',
+    'f_draw_span_bbox',
+    type=bool,
+    default=True
+)
+
+@click.option(
+    '--orig',
+    'f_dump_orig_pdf',
+    type=bool,
+    default=True
+)
+# ---------------------------------------
+
 
 def main(
         ctx,
@@ -176,12 +200,15 @@ def main(
             file_name_list = []
             pdf_bytes_list = []
             lang_list = []
+
             for path in path_list:
                 file_name = str(Path(path).stem)
                 pdf_bytes = read_fn(path)
+                
                 file_name_list.append(file_name)
                 pdf_bytes_list.append(pdf_bytes)
                 lang_list.append(lang)
+                
             do_parse(
                 output_dir=output_dir,
                 pdf_file_names=file_name_list,

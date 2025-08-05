@@ -5,6 +5,10 @@ from loguru import logger
 import numpy as np
 
 from mineru.utils.boxbase import get_minbox_if_overlap_by_ratio
+from mineru.mineru_extra.plumber import pdf_plum
+from mineru.mineru_extra.plumber.compare import overlap_calculate_return
+
+table_hash = pdf_plum.table_hash
 
 try:
     import torch
@@ -253,7 +257,7 @@ def remove_overlaps_min_blocks(res_list):
     return res_list, need_remove
 
 
-def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshold=0.8, area_threshold=0.8):
+def get_res_list_from_layout_res(layout_res, page, iou_threshold=0.7, overlap_threshold=0.8, area_threshold=0.8):
     """Extract OCR, table and other regions from layout results."""
     ocr_res_list = []
     text_res_list = []
@@ -273,6 +277,31 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
         elif category_id in [0, 2, 4, 6, 7, 3]:  # OCR regions
             ocr_res_list.append(res)
         elif category_id == 5:  # Table regions
+            poly_bbox = [res['poly'][0],
+                         res['poly'][1],
+                         res['poly'][4],
+                         res['poly'][5]]
+            plum_info:pdf_plum.TableInfo = table_hash.tables.get(page, None)
+
+            if plum_info:
+                plum_bboxs = plum_info.table_info
+                for plum_bbox in plum_bboxs:
+                    scaled_plum_bbox = [
+                                        plum_bbox[0] * 200 / 72,  # x0
+                                        plum_bbox[1] * 200 / 72,  # y0
+                                        plum_bbox[2] * 200 / 72,  # x1
+                                        plum_bbox[3] * 200 / 72   # y1
+                                        ]
+                    
+                    compare_bbox = overlap_calculate_return(scaled_plum_bbox, poly_bbox)
+                    if compare_bbox is not None:
+                        poly_bbox = compare_bbox
+                        
+                res['poly'] = [ poly_bbox[0], poly_bbox[1],
+                                poly_bbox[2], poly_bbox[1],
+                                poly_bbox[2], poly_bbox[3],
+                                poly_bbox[0], poly_bbox[3]]
+            
             table_res_list.append(res)
             table_indices.append(i)
         elif category_id in [1]:  # Text regions
@@ -282,7 +311,7 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
     # Process tables: merge high IoU tables first, then filter nested tables
     table_res_list, table_indices = merge_high_iou_tables(
         table_res_list, layout_res, table_indices, iou_threshold)
-
+    
     filtered_table_res_list = filter_nested_tables(
         table_res_list, overlap_threshold, area_threshold)
 
@@ -310,6 +339,7 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
         for res in need_remove:
             del res['bbox']
             layout_res.remove(res)
+    
 
     return ocr_res_list, filtered_table_res_list, single_page_mfdetrec_res
 

@@ -1,19 +1,26 @@
 import cv2
 from loguru import logger
 from tqdm import tqdm
-from collections import defaultdict
 import numpy as np
+from collections import defaultdict
+from PIL import Image
 
+
+from mineru.mineru_extra.plumber.compare import overlap_calculate_return
 from .model_init import AtomModelSingleton
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
+from mineru.mineru_extra.nest_table_py.src import NestTableCore, HtmlConverter
+from mineru.cli.common import html_save_path
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 8
 MFD_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 
+nest_table_method = NestTableCore()
+html_converter = HtmlConverter()
 
 class BatchAnalyze:
     def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = True):
@@ -26,7 +33,6 @@ class BatchAnalyze:
     def __call__(self, images_with_extra_info: list) -> list:
         if len(images_with_extra_info) == 0:
             return []
-
         images_layout_res = []
 
         self.model = self.model_manager.get_model(
@@ -36,8 +42,8 @@ class BatchAnalyze:
         )
         atom_model_manager = AtomModelSingleton()
 
-        images = [image for image, _, _ in images_with_extra_info]
-
+        images = [image for image, _ , _, page in images_with_extra_info]
+    
         # doclayout_yolo
         layout_images = []
         for image_index, image in enumerate(images):
@@ -70,13 +76,14 @@ class BatchAnalyze:
 
         ocr_res_list_all_page = []
         table_res_list_all_page = []
+        table_res_list_pre_page = {}
         for index in range(len(images)):
-            _, ocr_enable, _lang = images_with_extra_info[index]
+            _, ocr_enable, _lang, page = images_with_extra_info[index]
             layout_res = images_layout_res[index]
             pil_img = images[index]
 
             ocr_res_list, table_res_list, single_page_mfdetrec_res = (
-                get_res_list_from_layout_res(layout_res)
+                get_res_list_from_layout_res(layout_res, page)
             )
 
             ocr_res_list_all_page.append({'ocr_res_list':ocr_res_list,
@@ -86,13 +93,27 @@ class BatchAnalyze:
                                           'single_page_mfdetrec_res':single_page_mfdetrec_res,
                                           'layout_res':layout_res,
                                           })
-
+            
             for table_res in table_res_list:
-                table_img, _ = crop_img(table_res, pil_img)
+                if page in table_res_list_pre_page:
+                    table_res_list_pre_page[page].append(table_res)
+                else:
+                    table_res_list_pre_page[page] = [table_res]
+
+                cut_res = table_res.copy()
+                fk = 20
+                cut_res['poly'] = [cut_res['poly'][0]-fk, cut_res['poly'][1]-fk,
+                                   cut_res['poly'][2]+fk, cut_res['poly'][3]-fk,
+                                   cut_res['poly'][4]+fk, cut_res['poly'][5]+fk,
+                                   cut_res['poly'][6]-fk, cut_res['poly'][7]+fk]
+                table_img, _ = crop_img(cut_res, pil_img)
                 table_res_list_all_page.append({'table_res':table_res,
                                                 'lang':_lang,
                                                 'table_img':table_img,
+                                                'page': page
                                               })
+            
+
 
         # OCR检测处理
         if self.enable_ocr_det_batch:
@@ -249,13 +270,48 @@ class BatchAnalyze:
         if self.table_enable:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
+                
                 table_model = atom_model_manager.get_atom_model(
                     atom_model_name='table',
                     lang=_lang,
                 )
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
+                    
+
+                """
+                try:
+                    import os
+                    from PIL import Image
+                    save_path = f"table_img_{hash(str(table_res_dict['table_img'])) % 10000}.png"
+                    if isinstance(table_res_dict['table_img'], Image.Image):
+                        table_res_dict['table_img'].save(save_path)
+                    else:
+                        Image.fromarray(table_res_dict['table_img']).save(save_path)
+                except Exception as e:
+                    logger.warning(f"保存table_img失败: {e}")
+
+                """
+
+                # table_res_dict['table_img'] 找到的表格
+                table_img = table_res_dict['table_img']
+
+                if isinstance(table_img, Image.Image):
+                    img = cv2.cvtColor(np.array(table_img), cv2.COLOR_RGB2BGR)
+                else:
+                    img = table_img
+                
+                pre_html = nest_table_method(img)
+                if pre_html is None:
+                    html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
+                else:
+                    main_table = pre_html[0]
+                    sub_tables = pre_html[1]
+                  
+                    html_code = html_converter(main_table=main_table, 
+                                               sub_table=sub_tables,
+                                               )
                 # 判断是否返回正常
                 if html_code:
+                    
                     expected_ending = html_code.strip().endswith('</html>') or html_code.strip().endswith('</table>')
                     if expected_ending:
                         table_res_dict['table_res']['html'] = html_code

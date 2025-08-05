@@ -15,30 +15,36 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.mineru_extra.plumber import pdf_plum
 
 pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg", ".webp", ".gif"]
-
+pre_process = pdf_plum.Plumber()
 
 def read_fn(path):
     if not isinstance(path, Path):
         path = Path(path)
+
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
         if path.suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
         elif path.suffix in pdf_suffixes:
+            pre_process(path)
             return file_bytes
         else:
             raise Exception(f"Unknown file suffix: {path.suffix}")
-
+def pdf_pre_process(pdf_file_name):
+    pass
 
 def prepare_env(output_dir, pdf_file_name, parse_method):
     local_md_dir = str(os.path.join(output_dir, pdf_file_name, parse_method))
     local_image_dir = os.path.join(str(local_md_dir), "images")
+    local_html_dir = os.path.join(str(local_md_dir), "html")
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
-    return local_image_dir, local_md_dir
+    os.makedirs(local_html_dir, exist_ok=True)
+    return local_image_dir, local_md_dir, local_html_dir
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
@@ -89,7 +95,9 @@ def _process_output(
         pdf_file_name,
         local_md_dir,
         local_image_dir,
+        local_html_dir,
         md_writer,
+        html_writer,
         f_draw_layout_bbox,
         f_draw_span_bbox,
         f_dump_orig_pdf,
@@ -173,6 +181,7 @@ def _process_pipeline(
         f_dump_content_list,
         f_make_md_mode,
 ):
+
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
@@ -183,20 +192,20 @@ def _process_pipeline(
             formula_enable=p_formula_enable, table_enable=p_table_enable
         )
     )
-
     for idx, model_list in enumerate(infer_results):
         model_json = copy.deepcopy(model_list)
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-
+        local_image_dir, local_md_dir, local_html_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+        image_writer, md_writer, html_writer = (FileBasedDataWriter(local_image_dir), 
+                                                FileBasedDataWriter(local_md_dir),
+                                                FileBasedDataWriter(local_html_dir))
         images_list = all_image_lists[idx]
         pdf_doc = all_pdf_docs[idx]
         _lang = lang_list[idx]
         _ocr_enable = ocr_enabled_list[idx]
 
         middle_json = pipeline_result_to_middle_json(
-            model_list, images_list, pdf_doc, image_writer,
+            model_list, images_list, pdf_doc, image_writer, html_writer,
             _lang, _ocr_enable, p_formula_enable
         )
 
@@ -204,8 +213,9 @@ def _process_pipeline(
         pdf_bytes = pdf_bytes_list[idx]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+
+            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir, local_html_dir,
+            md_writer, html_writer,f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
             f_make_md_mode, middle_json, model_json, is_pipeline=True
         )
@@ -228,6 +238,7 @@ async def _async_process_vlm(
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
+
     parse_method = "vlm"
     f_draw_span_bbox = False
     if not backend.endswith("client"):
@@ -235,9 +246,10 @@ async def _async_process_vlm(
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-
+        local_image_dir, local_md_dir, local_html_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+        image_writer, md_writer, html_writer = (FileBasedDataWriter(local_image_dir), 
+                                                FileBasedDataWriter(local_md_dir),
+                                                FileBasedDataWriter(local_html_dir))
         middle_json, infer_result = await aio_vlm_doc_analyze(
             pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
         )
@@ -245,8 +257,8 @@ async def _async_process_vlm(
         pdf_info = middle_json["pdf_info"]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,local_html_dir,
+            md_writer, html_writer,f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
             f_make_md_mode, middle_json, infer_result, is_pipeline=False
         )
@@ -276,9 +288,11 @@ def _process_vlm(
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-
+        local_image_dir, local_md_dir, local_html_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+        local_image_dir, local_md_dir, local_html_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+        image_writer, md_writer, html_writer = (FileBasedDataWriter(local_image_dir), 
+                                                FileBasedDataWriter(local_md_dir),
+                                                FileBasedDataWriter(local_html_dir))
         middle_json, infer_result = vlm_doc_analyze(
             pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
         )
@@ -286,8 +300,8 @@ def _process_vlm(
         pdf_info = middle_json["pdf_info"]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,local_html_dir,
+            md_writer, html_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
             f_make_md_mode, middle_json, infer_result, is_pipeline=False
         )

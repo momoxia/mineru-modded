@@ -161,8 +161,27 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
     return page_info
 
-
-def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enabled=True):
+def save_to_html(page_info, html_writer, page_index):
+    layout = page_info.get('preproc_blocks')
+    idx = 0
+    for det in layout:
+        if det['type'] == 'table':
+            tables = det.get('blocks')
+            for table in tables:
+                if table['type'] == 'table_body':
+                    for line in table['lines']:
+                        spans = line.get('spans')
+                        for span in spans:
+                            if span['type'] == 'table':
+                                html = span['html']
+                                save_html_path = f'page_{page_index}_table_{idx}.html'
+                                idx += 1
+                                html_writer.write_html(save_html_path, html)
+                                span['html_path'] = save_html_path
+                                
+                        
+                            
+def result_to_middle_json(model_list, images_list, pdf_doc, image_writer,html_writer, lang=None, ocr_enable=False, formula_enabled=True):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
     formula_enabled = get_formula_enable(formula_enabled)
     for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
@@ -171,6 +190,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
         page_info = page_model_info_to_page_info(
             page_model_info, image_dict, page, image_writer, page_index, ocr_enable=ocr_enable, formula_enabled=formula_enabled
         )
+        save_to_html(page_info, html_writer, page_index)
         if page_info is None:
             page_w, page_h = map(int, page.get_size())
             page_info = make_page_info_dict([], page_index, page_w, page_h, [])
