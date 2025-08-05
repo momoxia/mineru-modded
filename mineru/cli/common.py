@@ -20,7 +20,7 @@ from mineru.mineru_extra.plumber import pdf_plum
 pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg", ".webp", ".gif"]
 pre_process = pdf_plum.Plumber()
-html_save_path = None
+
 def read_fn(path):
     if not isinstance(path, Path):
         path = Path(path)
@@ -238,7 +238,6 @@ async def _async_process_vlm(
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
-    global html_save_path
 
     parse_method = "vlm"
     f_draw_span_bbox = False
