@@ -475,7 +475,6 @@ class NestTableCore:
         else:
             main_table = table_info[0] if 0 in table_info else next(iter(table_info.values()))
             sub_table = {k: v for k, v in table_info.items() if k != 0}  
-        print(main_table)
         
         return (main_table, sub_table)
 
