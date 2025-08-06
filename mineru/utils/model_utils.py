@@ -285,6 +285,7 @@ def get_res_list_from_layout_res(layout_res, page, iou_threshold=0.7, overlap_th
 
             if plum_info:
                 plum_bboxs = plum_info.table_info
+                updated_poly_bbox = False  # 标记是否更新了poly_bbox
                 for plum_bbox in plum_bboxs:
                     scaled_plum_bbox = [
                                         plum_bbox[0] * 200 / 72,  # x0
@@ -296,11 +297,14 @@ def get_res_list_from_layout_res(layout_res, page, iou_threshold=0.7, overlap_th
                     compare_bbox = overlap_calculate_return(scaled_plum_bbox, poly_bbox)
                     if compare_bbox is not None:
                         poly_bbox = compare_bbox
+                        updated_poly_bbox = True  # 标记已更新
                         
-                res['poly'] = [ poly_bbox[0], poly_bbox[1],
-                                poly_bbox[2], poly_bbox[1],
-                                poly_bbox[2], poly_bbox[3],
-                                poly_bbox[0], poly_bbox[3]]
+                # 只有在poly_bbox被更新时才更新res['poly']
+                if updated_poly_bbox:
+                    res['poly'] = [ poly_bbox[0], poly_bbox[1],
+                                    poly_bbox[2], poly_bbox[1],
+                                    poly_bbox[2], poly_bbox[3],
+                                    poly_bbox[0], poly_bbox[3]]
             
             table_res_list.append(res)
             table_indices.append(i)
