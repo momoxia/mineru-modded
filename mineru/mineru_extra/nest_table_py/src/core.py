@@ -263,21 +263,57 @@ class NestTableCore:
         x_map = {x_list[i]: i for i, x in enumerate(x_list)}
         y_map = {y_list[i]: i for i, y in enumerate(y_list)}
 
+        # 为每个子表找到最合适的一个单元格（基于重叠面积比例）
+        table_assignments = {}  # 存储每个子表分配到的单元格
+        
         for relation in table_relation.relation:
-            for _, relation_bbox in relation.items():
-                candidate_units = {}
-                for unit_bbox, unit_lines in units.items(): 
+            for table_index, relation_bbox in relation.items():
+                best_unit = None
+                best_ratio = 0
+                candidate_units = []
+                
+                # 收集所有完全包含子表的单元格
+                for unit_bbox, unit_lines in units.items():
                     if (relation_bbox[0] >= unit_bbox[0] and
                         relation_bbox[1] >= unit_bbox[1] and
                         relation_bbox[2] <= unit_bbox[2] and
-                        relation_bbox[3] <= unit_bbox[3]):  
-                        candidate_units[unit_bbox] = unit_bbox
+                        relation_bbox[3] <= unit_bbox[3]):
+                        candidate_units.append(unit_bbox)
+                
+                # 如果没有完全包含的单元格，则查找部分重叠的单元格
+                if not candidate_units:
+                    for unit_bbox, unit_lines in units.items():
+                        # 计算重叠面积与子表面积的比例
+                        overlap_width = max(0, min(relation_bbox[2], unit_bbox[2]) - max(relation_bbox[0], unit_bbox[0]))
+                        overlap_height = max(0, min(relation_bbox[3], unit_bbox[3]) - max(relation_bbox[1], unit_bbox[1]))
+                        overlap_area = overlap_width * overlap_height
                         
-                min_key, min_bbox = find_min_bbox_area(candidate_units)
+                        table_area = (relation_bbox[2] - relation_bbox[0]) * (relation_bbox[3] - relation_bbox[1])
+                        
+                        if table_area > 0 and overlap_area > 0:
+                            ratio = overlap_area / table_area
+                            if ratio > best_ratio:
+                                best_ratio = ratio
+                                best_unit = unit_bbox
+                
+                # 如果有完全包含的单元格，选择面积最小的一个
+                elif candidate_units:
+                    min_area = float('inf')
+                    for unit_bbox in candidate_units:
+                        area = (unit_bbox[2] - unit_bbox[0]) * (unit_bbox[3] - unit_bbox[1])
+                        if area < min_area:
+                            min_area = area
+                            best_unit = unit_bbox
+                
+                # 记录子表的分配结果
+                if best_unit is not None:
+                    table_assignments[table_index] = (best_unit, relation_bbox)
 
-                if min_key is not None:
-                    sub_tables[min_key] = (relation_bbox, _)
-    
+        # 将分配结果添加到sub_tables中
+        for table_index, (unit_bbox, relation_bbox) in table_assignments.items():
+            if unit_bbox not in sub_tables:
+                sub_tables[unit_bbox] = []
+            sub_tables[unit_bbox].append((relation_bbox, table_index))
 
         for text_unit in text_macthed:        
             unit_dtype = 'str'
@@ -295,17 +331,18 @@ class NestTableCore:
         need_sort = set()
         for unit_bbox, relations in sub_tables.items():
             unit_dtype = 'table'
-            text = relations[1]
             compose = units[unit_bbox]
             location = (x_map[compose[0]],
                         x_map[compose[1]],
                         y_map[compose[2]],
                         y_map[compose[3]])
             need_sort.add(location)
-            if location in unit_info:
-                unit_info[location].append((unit_dtype, text, relations[0]))
-            else:
-                unit_info[location] = [(unit_dtype, text, relations[0])]
+            
+            for relation_bbox, table_index in relations:
+                if location in unit_info:
+                    unit_info[location].append((unit_dtype, table_index, relation_bbox))
+                else:
+                    unit_info[location] = [(unit_dtype, table_index, relation_bbox)]
 
         for need in need_sort:
             sort_target = unit_info[need]
@@ -416,25 +453,29 @@ class NestTableCore:
         for order in process_order:
             process_table: TableRelation = relation[order]
             matched_result[order] = self._match_text(process_table, ocr_result , matched_table)
-
         info = MidInfo(relation, matched_result)
         table_relation = info.table_relation
         text_matched = info.text_macthed
         table_info = {}
         for idx, table in table_relation.items():
             table_info[idx] = self._post_process(table, text_matched[idx])
-
+        
         if process_order:
             main_table_index = process_order[-1] 
             main_table = table_info[main_table_index]
             sub_table = {}
 
             for idx in process_order[:-1]:
-                sub_table[idx] = table_info[idx]
+                #print(f"Index: {idx}")
+                #print(f"Table info keys: {list(table_info[idx].keys())}")
+                #print(f"Table info: {table_info[idx]}")
+                sub_table[idx] = table_info[idx].copy()
+                #print(f"Sub table {idx}: {sub_table[idx]}")
+                #print("-" * 50)
         else:
             main_table = table_info[0] if 0 in table_info else next(iter(table_info.values()))
-            sub_table = {k: v for k, v in table_info.items() if k != 0}
-            
+            sub_table = {k: v for k, v in table_info.items() if k != 0}  
+        
         return (main_table, sub_table)
 
 
