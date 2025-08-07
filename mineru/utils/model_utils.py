@@ -281,6 +281,7 @@ def get_res_list_from_layout_res(layout_res, page, iou_threshold=0.7, overlap_th
                          res['poly'][1],
                          res['poly'][4],
                          res['poly'][5]]
+            
             plum_info:pdf_plum.TableInfo = table_hash.tables.get(page, None)
 
             if plum_info:

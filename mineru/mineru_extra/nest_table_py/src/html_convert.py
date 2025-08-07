@@ -7,20 +7,8 @@ class HtmlConverter:
                  sub_table):
         
         html_table = self.generate_html_table(main_table, sub_table)
-        full_html = f"""<!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>表格转换结果</title>
-            <style>
-                table {{ border-collapse: collapse; margin: 10px; }}
-                td {{ border: 1px solid #000; padding: 5px; }}
-            </style>
-        </head>
-        <body>
-        {html_table}
-        </body>
-        </html>"""
+        # 修改为简单的HTML结构，去除样式和多余标签
+        full_html = f"<html><body>{html_table}</body></html>"
     
         return full_html
 
@@ -44,8 +32,9 @@ class HtmlConverter:
                 tables_dict, 
                 depth + 1
             )
-            return f'<div class="subtable" data-id="{table_id}">\n{sub_table}\n</div>'
-        return f'<div class="subtable" data-id="{table_id}">[TABLE {table_id}]</div>'
+            # 直接返回子表格HTML，不添加额外的包装元素
+            return sub_table
+        return f'[TABLE {table_id}]'
 
     def generate_html_table(self, table_data, tables_dict=None, depth=0):
         """
@@ -109,8 +98,8 @@ class HtmlConverter:
                     if r != r_start or c != c_start:
                         grid[r][c] = {'covered': True}
         
-        # 生成HTML
-        html_output = ['<table border="1" class="table-depth-{}">'.format(depth)]
+        # 生成HTML，去除样式相关的属性，保持简洁格式
+        html_output = ['<table>']
         for r in range(max_row):
             html_output.append('<tr>')
             for c in range(max_col):
@@ -125,4 +114,4 @@ class HtmlConverter:
             html_output.append('</tr>')
         html_output.append('</table>')
         
-        return '\n'.join(html_output)
+        return ''.join(html_output)

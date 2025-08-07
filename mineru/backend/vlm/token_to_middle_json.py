@@ -10,6 +10,7 @@ from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.version import __version__
 
+
 heading_level_import_success = False
 llm_aided_config = get_llm_aided_config()
 if llm_aided_config:
@@ -36,7 +37,7 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     page_img_md5 = str_md5(image_dict["img_base64"])
     width, height = map(int, page.get_size())
 
-    magic_model = MagicModel(token, width, height)
+    magic_model = MagicModel(token, width, height, page_index, page_pil_img )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     title_blocks = magic_model.get_title_blocks()
@@ -81,14 +82,33 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     page_info = {"para_blocks": page_blocks, "discarded_blocks": [], "page_size": [width, height], "page_idx": page_index}
     return page_info
 
-
-def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
+def save_to_html(page_info, html_writer, page_index):
+    layout = page_info.get('para_blocks')
+    idx = 0
+    for det in layout:
+        if det['type'] == 'table':
+            tables = det.get('blocks')
+            for table in tables:
+                if table['type'] == 'table_body':
+                    for line in table['lines']:
+                        spans = line.get('spans')
+                        for span in spans:
+                            if span['type'] == 'table':
+                                html = span['html']
+                                save_html_path = f'page_{page_index}_table_{idx}.html'
+                                idx += 1
+                                html_writer.write_html(save_html_path, html)
+                                span['html_path'] = save_html_path
+def result_to_middle_json(token_list, images_list, pdf_doc, image_writer, html_writer):
     middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
+    #table_dict = {}
     for index, token in enumerate(token_list):
         page = pdf_doc[index]
         image_dict = images_list[index]
         page_info = token_to_page_info(token, image_dict, page, image_writer, index)
+        save_to_html(page_info, html_writer, index)
         middle_json["pdf_info"].append(page_info)
+        
 
     """llm优化标题分级"""
     if heading_level_import_success:

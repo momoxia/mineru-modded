@@ -12,7 +12,6 @@ from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
 from mineru.mineru_extra.nest_table_py.src import NestTableCore, HtmlConverter
-from mineru.cli.common import html_save_path
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 8
 MFD_BASE_BATCH_SIZE = 1

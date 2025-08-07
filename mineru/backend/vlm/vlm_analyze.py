@@ -9,6 +9,10 @@ from .base_predictor import BasePredictor
 from .predictor import get_predictor
 from .token_to_middle_json import result_to_middle_json
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.mineru_extra.nest_table_py.src import NestTableCore, HtmlConverter
+
+nest_table_method = NestTableCore()
+html_converter = HtmlConverter()
 
 
 class ModelSingleton:
@@ -43,6 +47,7 @@ class ModelSingleton:
 def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
+    html_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
     backend="transformers",
     model_path: str | None = None,
@@ -60,16 +65,18 @@ def doc_analyze(
 
     # infer_start = time.time()
     results = predictor.batch_predict(images=images_base64_list)
+
     # infer_time = round(time.time() - infer_start, 2)
     # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
 
-    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
+    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer, html_writer)
     return middle_json, results
 
 
 async def aio_doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
+    html_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
     backend="transformers",
     model_path: str | None = None,
@@ -89,5 +96,5 @@ async def aio_doc_analyze(
     results = await predictor.aio_batch_predict(images=images_base64_list)
     # infer_time = round(time.time() - infer_start, 2)
     # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
-    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
+    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer, html_writer)
     return middle_json, results

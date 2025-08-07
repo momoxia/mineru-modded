@@ -2,16 +2,31 @@ import re
 from typing import Literal
 
 from loguru import logger
+import cv2
+import numpy as np
+from PIL import Image
 
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.format_utils import convert_otsl_to_html
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
+from mineru.mineru_extra.nest_table_py.src import NestTableCore, HtmlConverter
+from mineru.mineru_extra.plumber import pdf_plum
+from mineru.mineru_extra.plumber.compare import overlap_calculate_return
 
+
+table_hash = pdf_plum.table_hash
+nest_table_method = NestTableCore()
+html_converter = HtmlConverter()
 
 class MagicModel:
-    def __init__(self, token: str, width, height):
+    def __init__(self, token: str, width, height, page_index, page_pil_img):
         self.token = token
+        self.page_index = page_index
+        self.page_img = page_pil_img
+        self.scale_x = self.page_img.width / width 
+        self.scale_y = self.page_img.height / height
+        self.fk = 15
 
         # 使用正则表达式查找所有块
         pattern = (
@@ -72,21 +87,61 @@ class MagicModel:
                 span_type = ContentType.INTERLINE_EQUATION
 
             if span_type in ["image", "table"]:
+                if span_type == "table": 
+                    _info:pdf_plum.TableInfo = table_hash.tables.get(self.page_index, None)
+                    if _info is not None:
+                        plum_info = _info.table_info
+                        for plum_bbox in plum_info:
+                            compare_bbox = overlap_calculate_return(plum_bbox, block_bbox)
+                            if compare_bbox is not None:
+                                block_bbox = (compare_bbox[0],
+                                              compare_bbox[1],
+                                              compare_bbox[2],
+                                              compare_bbox[3])
+
+                                updated_poly_bbox = True
+
+                
                 span = {
                     "bbox": block_bbox,
                     "type": span_type,
                 }
+               
+
                 if span_type == ContentType.TABLE:
-                    if "<fcel>" in block_content or "<ecel>" in block_content:
-                        lines = block_content.split("\n\n")
-                        new_lines = []
-                        for line in lines:
-                            if "<fcel>" in line or "<ecel>" in line:
-                                line = convert_otsl_to_html(line)
-                            new_lines.append(line)
-                        span["html"] = "\n\n".join(new_lines)
+                    fk = self.fk
+                    scaled_bbox = (block_bbox[0] * self.scale_x - fk ,
+                                block_bbox[1] * self.scale_y - fk,
+                                block_bbox[2] * self.scale_x + fk ,
+                                block_bbox[3] * self.scale_y + fk)
+                    cropped_table = self.page_img.crop(scaled_bbox)
+                    
+                    if isinstance(cropped_table, Image.Image):
+                        img = cv2.cvtColor(np.array(cropped_table), cv2.COLOR_RGB2BGR)
                     else:
-                        span["html"] = block_content
+                        img = cropped_table
+
+                    pre_html = nest_table_method(img)
+
+                    if pre_html is not None:
+                       main_table = pre_html[0]
+                       sub_tables = pre_html[1]
+                       html_code = html_converter(main_table=main_table, 
+                                               sub_table=sub_tables,
+                                               )
+                       span["html"] = html_code
+                    else:
+                        if "<fcel>" in block_content or "<ecel>" in block_content:
+                            lines = block_content.split("\n\n")
+                            new_lines = []
+                            for line in lines:
+                                if "<fcel>" in line or "<ecel>" in line:
+                                    line = convert_otsl_to_html(line)
+                                new_lines.append(line)
+                            span["html"] = "\n\n".join(new_lines)
+                        else:
+                            span["html"] = block_content
+
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
                     "bbox": block_bbox,
@@ -170,6 +225,7 @@ class MagicModel:
         self.interline_equation_blocks = []
         self.text_blocks = []
         self.title_blocks = []
+        blocks = self._remove_overlapping_blocks(blocks)
         for block in blocks:
             if block["type"] in [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]:
                 self.image_blocks.append(block)
@@ -183,6 +239,7 @@ class MagicModel:
                 self.title_blocks.append(block)
             else:
                 continue
+        
 
     def get_image_blocks(self):
         return fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
@@ -201,6 +258,32 @@ class MagicModel:
 
     def get_all_spans(self):
         return self.all_spans
+    
+    def _remove_overlapping_blocks(self, blocks, overlap_threshold=0.8):
+        """
+        移除重叠的块，保留面积较大的块
+        """
+        from mineru.utils.boxbase import get_minbox_if_overlap_by_ratio
+        
+        if len(blocks) <= 1:
+            return blocks
+            
+        # 按面积从大到小排序，确保优先保留大面积的块
+        sorted_blocks = sorted(blocks, key=lambda b: (b['bbox'][2] - b['bbox'][0]) * (b['bbox'][3] - b['bbox'][1]), reverse=True)
+        keep_blocks = []
+        
+        for block in sorted_blocks:
+            keep = True
+            for kept_block in keep_blocks:
+                # 检查是否重叠
+                overlap_box = get_minbox_if_overlap_by_ratio(block['bbox'], kept_block['bbox'], overlap_threshold)
+                if overlap_box is not None:
+                    keep = False
+                    break
+            if keep:
+                keep_blocks.append(block)
+                
+        return keep_blocks
 
 
 def isolated_formula_clean(txt):
@@ -383,3 +466,5 @@ def fix_text_blocks(blocks):
                     continue
         i += 1
     return blocks
+
+    
